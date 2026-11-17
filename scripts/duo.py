@@ -33,6 +33,7 @@ IN_PX, OUT_PX = (2852, 2006), (1398, 2034)
 IN_PT = IN_W / (IN_PX[0] / 3)                  # simulator point -> device pixel
 OUT_PT = OUT_W / (OUT_PX[0] / 3)
 PERSP = 8500                                   # camera ≈ 8.4 half-widths away (measured from a reference photo)
+THICK = 72                                     # each half's body depth (~5.5 mm at this scale): side walls, not a flat card
 STATUS_CROP = (2620, 90, 2800, 305)            # clock + status block on the real inner screen
 STATUS_OUTER = (1164, 249)                     # top-left of the same block on the real outer screen
 POSES = {"closed": 0, "half": 132, "open": 180}   # opening angle between the halves; "half" = each half ±24°
@@ -199,8 +200,8 @@ def status(a):
 
 
 # ══════════════════════════ timeline ══════════════════════════
-KINDS = ("pose", "enter", "exit", "file", "tap", "title", "card", "power", "camera", "sound")
-DEFAULT_DUR = {"pose": 0.6, "enter": 0.95, "exit": 0.65, "camera": 0.8, "power": 0.2}
+KINDS = ("pose", "enter", "exit", "file", "tap", "swipe", "title", "card", "power", "camera", "sound")
+DEFAULT_DUR = {"pose": 0.6, "enter": 0.95, "exit": 0.65, "camera": 0.8, "power": 0.2, "swipe": 0.35}
 TIME_RE = re.compile(r"\s*([A-Za-z_][\w-]*(?:\.end)?)\s*(?:([+-])\s*([\d.]+))?\s*")
 
 
@@ -267,14 +268,67 @@ def resolve_timeline(cfg, root):
     return events, ids, r3(dur)
 
 
+SYM = 60   # from this opening angle up, the halves open symmetrically (a V facing the camera)
+
+
 def angles(phi):
-    """Opening angle (0 closed … 180 flat) -> rotationY of the left and right halves."""
+    """Opening angle (0 closed … 180 flat) -> rotationY of the left and right halves.
+    Down to SYM the halves form a symmetric V; below it the right half turns back to face the camera and the left
+    one closes over it, so a closed device shows its outer screen."""
     phi = max(0.0, min(180.0, float(phi)))
-    if phi >= 90:
+    if phi >= SYM:
         a = (180 - phi) / 2
         return r3(a), r3(-a)
-    right = -45 * phi / 90
+    right = -(180 - SYM) / 2 * phi / SYM
     return r3(180 - phi + right), r3(right)
+
+
+def extent(phi):
+    """On-screen size of the body at this pose: (width in half-body widths, height growth), perspective included.
+    A half turned towards the camera grows (its outer edge comes closer); a half folded over the other adds no width."""
+    left, right = angles(phi)
+    w, grow = 0.0, 1.0
+    for a, over in ((left, left > 90), (-right, False)):
+        tilt = math.radians(180 - a if a > 90 else a)
+        mag = PERSP / (PERSP - WP * math.sin(tilt))
+        grow = max(grow, mag)
+        if not over:
+            w += math.cos(tilt) * mag
+    return max(1.0, w), grow
+
+
+def walls(radii, segs=8):
+    """Side walls of one half: strips along its rounded outline (radii: top-left, top-right, bottom-right,
+    bottom-left), each standing from the screen plane (z=0) back to the rear face (z=-THICK), shaded by facing."""
+    tl, tr, br, bl = radii
+    w, h = WP, HP
+    pts = []
+    def arc(cx, cy, rad, a0, a1):
+        for i in range(segs + 1):
+            a = math.radians(a0 + (a1 - a0) * i / segs)
+            pts.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+    arc(w - tr, tr, tr, -90, 0)
+    arc(w - br, h - br, br, 0, 90)
+    arc(bl, h - bl, bl, 90, 180)
+    arc(tl, tl, tl, 180, 270)
+    pts.append(pts[0])
+    lx, ly = -0.42, -0.91                       # light from above, slightly left
+    out = []
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+        dx, dy = x2 - x1, y2 - y1
+        ln = math.hypot(dx, dy)
+        if ln < 0.5:
+            continue
+        nx, ny = dy / ln, -dx / ln              # outward normal (clockwise outline, y down)
+        lit = (nx * lx + ny * ly + 1) / 2
+        g = round(46 + 92 * lit)
+        col = f"rgb({g}, {g}, {g + 5})"
+        L = ln + 1.5                            # slight overlap: no hairline gaps between strips
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        ang = math.degrees(math.atan2(dy, dx))
+        out.append(f'<i class="wall" style="left: {mx - L / 2:.1f}px; top: {my - THICK / 2:.1f}px; width: {L:.1f}px; '
+                   f'background: {col}; transform: translateZ({-THICK / 2}px) rotateZ({ang:.2f}deg) rotateX(90deg);"></i>')
+    return "".join(out)
 
 
 def pose_angle(p):
@@ -316,6 +370,7 @@ CSS = Template("""
       .brand { font-weight: 300; font-size: ${BRAND}px; line-height: 1.1; letter-spacing: 0.14em; padding-left: 0.14em; }
       .line1 { font-weight: 300; font-size: ${LINE1}px; line-height: 1.1; letter-spacing: 0.04em; padding-left: 0.04em; }
       .line { font-weight: 400; font-size: ${LINE}px; line-height: 1.2; letter-spacing: -0.01em; margin-top: ${LINE_GAP}px; }
+      .card > div { white-space: nowrap; }
       .title { position: absolute; $TITLE text-align: center; font-weight: 400; letter-spacing: -0.015em; }
 
       /* ══ Folding body: each half turns around the hinge; the left half closes over the right one. Closed, the hinge
@@ -331,7 +386,10 @@ CSS = Template("""
       .body--right { border-radius: 16px ${RD}px ${RD}px 16px; box-shadow: inset 0 0 0 9px #48484c, inset 0 0 0 11px #26262a, 0 40px 100px rgba(27, 26, 36, 0.24), 0 10px 26px rgba(27, 26, 36, 0.14); }
       .body--left { border-radius: ${RD}px 16px 16px ${RD}px; }
       .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-      .face--back { transform: rotateY(180deg); border-radius: 16px ${RD}px ${RD}px 16px; }
+      .face--back { transform: translateZ(-${THICK}px) rotateY(180deg); border-radius: 16px ${RD}px ${RD}px 16px; }
+      /* Side walls: thin strips standing along the rounded outline, from the screen plane back to the rear face —
+         this is what gives the body its thickness when it folds (otherwise the halves read as razor-thin cards). */
+      .wall { position: absolute; height: ${THICK}px; }
       .btn { position: absolute; border-radius: 5px; background: linear-gradient(#636367, #3c3c40); }
       .btn--top1 { top: -8px; height: 12px; left: ${B1}px; width: ${B1W}px; }
       .btn--top2 { top: -8px; height: 12px; left: ${B2}px; width: ${B2W}px; }
@@ -467,41 +525,63 @@ def write_html(cfg, root, fmt, comp):
                 J(f'ft("{sel}", {{ autoAlpha: 1, scale: 1 }}, {{ autoAlpha: 0, scale: 0.88, duration: 0.38, ease: "power2.in" }}, {t});')
                 play(t, *S_SWAP)
 
-    # ── taps (simulator taps don't show in a recording; point = simulator point) ──
+    # ── touches: taps and swipes (the simulator doesn't draw touches; point = simulator point) ──
+    # One finger per burst of gestures: it fades in, glides to each touch, presses (tap: press + ripple; swipe: presses,
+    # slides along the path, lifts) and fades out. Glides between gestures take the time available, so it never jumps.
     touch = {"inner": [], "outer": []}
+    S_SWIPE = (("tap-2.ogg", 0.2),)
     for scr in ("inner", "outer"):
-        taps = [e for e in events if e["kind"] == "tap" and e.get("screen", "inner") == scr]
-        if not taps:
-            continue
         pt, r, rr = (IN_PT, 56, 80) if scr == "inner" else (OUT_PT, 42, 60)
-        pts = [{"t": e["t"], "x": round(e["tap"][0] * pt), "y": round(e["tap"][1] * pt)} for e in taps]
-        groups, g = [], [pts[0]]
-        for p in pts[1:]:
-            if p["t"] - g[-1]["t"] <= 2.5:
-                g.append(p)
+        gest = []
+        for e in events:
+            if e.get("screen", "inner") != scr or e["kind"] not in ("tap", "swipe"):
+                continue
+            if e["kind"] == "tap":
+                p = (round(e["tap"][0] * pt), round(e["tap"][1] * pt))
+                gest.append({"t": e["t"], "end": e["t"], "a": p, "b": p, "swipe": False})
             else:
-                groups.append(g); g = [p]
-        groups.append(g)
+                (x1, y1), (x2, y2) = e["swipe"]
+                gest.append({"t": e["t"], "end": e["end"], "a": (round(x1 * pt), round(y1 * pt)),
+                             "b": (round(x2 * pt), round(y2 * pt)), "swipe": True, "ease": e.get("ease", "power1.inOut")})
+        if not gest:
+            continue
+        gest.sort(key=lambda g: g["t"])
+        groups, cur = [], [gest[0]]
+        for g in gest[1:]:
+            if g["t"] - cur[-1]["end"] <= 2.5:
+                cur.append(g)
+            else:
+                groups.append(cur); cur = [g]
+        groups.append(cur)
         mod, rmod = (" touch--inner", " ripple--inner") if scr == "inner" else ("", "")
-        for gi, g in enumerate(groups):
+        for gi, grp in enumerate(groups):
             tc = f"t{scr[0]}{gi}"
             touch[scr].append(f'<div class="touch{mod} {tc} hidden"></div>')
-            s = {"x": g[0]["x"] + 170, "y": g[0]["y"] + 150}
-            t0 = r3(g[0]["t"] - 0.5)
-            J(f'tl.set(".{tc}", {{ x: {s["x"] - r}, y: {s["y"] - r}, scale: 1 }}, 0);')
+            ax, ay = grp[0]["a"]
+            sx, sy = ax + 170, ay + 150
+            t0 = r3(grp[0]["t"] - 0.5)
+            J(f'tl.set(".{tc}", {{ x: {sx - r}, y: {sy - r}, scale: 1, autoAlpha: 0 }}, 0);')
             J(f'ft(".{tc}", {{ autoAlpha: 0 }}, {{ autoAlpha: 1, duration: 0.22, ease: "power1.out" }}, {t0});')
-            J(f'ft(".{tc}", {{ x: {s["x"] - r}, y: {s["y"] - r} }}, {{ x: {g[0]["x"] - r}, y: {g[0]["y"] - r}, duration: 0.42, ease: "power3.out" }}, {t0});')
-            for ni, p in enumerate(g):
-                rc = f"{tc}r{ni}"
-                touch[scr].append(f'<div class="ripple{rmod} {rc} hidden" style="left: {p["x"] - rr}px; top: {p["y"] - rr}px;"></div>')
+            J(f'ft(".{tc}", {{ x: {sx - r}, y: {sy - r} }}, {{ x: {ax - r}, y: {ay - r}, duration: 0.42, ease: "power3.out" }}, {t0});')
+            for ni, g in enumerate(grp):
                 if ni:
-                    q = g[ni - 1]
-                    d = r3(max(0.1, min(1.0, p["t"] - q["t"] - 0.2)))
-                    J(f'ft(".{tc}", {{ x: {q["x"] - r}, y: {q["y"] - r} }}, {{ x: {p["x"] - r}, y: {p["y"] - r}, duration: {d}, ease: "power3.inOut" }}, {r3(q["t"] + 0.15)});')
-                J(f'ft(".{tc}", {{ scale: 1 }}, {{ scale: 0.82, duration: 0.08, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {p["t"]});')
-                J(f'ft(".{rc}", {{ autoAlpha: 0.55, scale: 0.2 }}, {{ autoAlpha: 0, scale: 1.8, duration: 0.5, ease: "power2.out" }}, {p["t"]});')
-                play(p["t"], *S_TAP)
-            J(f'ft(".{tc}", {{ autoAlpha: 1 }}, {{ autoAlpha: 0, duration: 0.3, ease: "power1.inOut" }}, {r3(g[-1]["t"] + 0.2)});')
+                    q = grp[ni - 1]
+                    d = max(0.12, min(0.8, g["t"] - q["end"] - 0.15))
+                    start = max(q["end"] + 0.05, g["t"] - d - 0.05)
+                    d = r3(max(0.05, min(d, g["t"] - start)))
+                    J(f'ft(".{tc}", {{ x: {q["b"][0] - r}, y: {q["b"][1] - r} }}, {{ x: {g["a"][0] - r}, y: {g["a"][1] - r}, duration: {d}, ease: "power2.inOut" }}, {r3(start)});')
+                if g["swipe"]:
+                    J(f'ft(".{tc}", {{ scale: 1 }}, {{ scale: 0.84, duration: 0.08, ease: "power1.out" }}, {g["t"]});')
+                    J(f'ft(".{tc}", {{ x: {g["a"][0] - r}, y: {g["a"][1] - r} }}, {{ x: {g["b"][0] - r}, y: {g["b"][1] - r}, duration: {r3(g["end"] - g["t"])}, ease: "{g["ease"]}" }}, {g["t"]});')
+                    J(f'ft(".{tc}", {{ scale: 0.84 }}, {{ scale: 1, duration: 0.12, ease: "power1.out" }}, {g["end"]});')
+                    play(g["t"], *S_SWIPE)
+                else:
+                    rc = f"{tc}r{ni}"
+                    touch[scr].append(f'<div class="ripple{rmod} {rc} hidden" style="left: {g["a"][0] - rr}px; top: {g["a"][1] - rr}px;"></div>')
+                    J(f'ft(".{tc}", {{ scale: 1 }}, {{ scale: 0.82, duration: 0.08, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {g["t"]});')
+                    J(f'ft(".{rc}", {{ autoAlpha: 0.55, scale: 0.2 }}, {{ autoAlpha: 0, scale: 1.8, duration: 0.5, ease: "power2.out" }}, {g["t"]});')
+                    play(g["t"], *S_TAP)
+            J(f'ft(".{tc}", {{ autoAlpha: 1 }}, {{ autoAlpha: 0, duration: 0.3, ease: "power1.inOut" }}, {r3(grp[-1]["end"] + 0.2)});')
 
     def stack(left, inst):
         items = sorted(stack_items["inner"], key=lambda it: (it[0], it[1]))
@@ -513,10 +593,13 @@ def write_html(cfg, root, fmt, comp):
     phi = pose_angle(dev.get("pose", "closed"))
     XC = WP / 2 * P["SC"]
     def frame(ph, cam, off):
-        s = min(1.0, ph / POSES["half"])
-        zoom = (P["SC"] + (P["SO"] - P["SC"]) * s) * cam["zoom"]
-        x = -XC * (1 - s) + cam["x"] + off[0]
-        y = (P["CY_O"] - P["CY_C"]) * s + cam["y"] + off[1]
+        # Framing follows the pose: the zoom keeps the body's on-screen width (open = 2 half-widths at SO) and its
+        # height (closed zoom, shrunk by how much the nearer edges grow); closed it's centred on the visible half,
+        # from the symmetric V up on the hinge.
+        w, grow = extent(ph)
+        zoom = min(P["SC"] / grow, P["SO"] * 2 / w) * cam["zoom"]
+        x = -XC * max(0.0, 1 - ph / SYM) + cam["x"] + off[0]
+        y = (P["CY_O"] - P["CY_C"]) * min(1.0, ph / POSES["half"]) + cam["y"] + off[1]
         return r3(x), r3(y), r3(zoom)
     OFF = {"bottom": (0, H + 300), "top": (0, -(H + 300)), "left": (-(W + 1400), 0), "right": (W + 1400, 0), "fade": (0, 0), None: (0, 0)}
     motion = [e for e in events if e["kind"] in ("pose", "enter", "exit", "camera")]
@@ -642,7 +725,7 @@ def write_html(cfg, root, fmt, comp):
         LINE_GAP=round(P["LINE"] * 0.66), TITLE=P["TITLE"], CX=P["CX"], CY_C=P["CY_C"], PERSP=PERSP, SC=P["SC"],
         WP=WP, HP=HP, HP2=HP // 2, WP2=2 * WP, RD=RD,
         B1=round(WP * 0.455), B1W=round(WP * 0.125), B2=round(WP * 0.61), B2W=round(WP * 0.128), BS=round(HP * 0.335), BSH=round(HP * 0.15),
-        IN_Y=IN_Y, IN_X=IN_X, IN_W=IN_W, IN_H=IN_H, IN_HALF=IN_HALF, IN_HALF6=IN_HALF + 6,
+        IN_Y=IN_Y, IN_X=IN_X, THICK=THICK, IN_W=IN_W, IN_H=IN_H, IN_HALF=IN_HALF, IN_HALF6=IN_HALF + 6,
         OUT_X=OUT_X, OUT_Y=OUT_Y, OUT_W=OUT_W, OUT_H=OUT_H)
 
     outer_items = "".join(b("outer") for _, _, b in sorted(stack_items["outer"], key=lambda it: (it[0], it[1])))
@@ -669,10 +752,12 @@ def write_html(cfg, root, fmt, comp):
         <div class="stage-pos" id="stage" data-layout-ignore><div class="stage3d" id="stageZoom">
           <div class="device" id="device">
             <div class="half half--right" id="halfRight">
+              {walls((16, RD, RD, 16))}
               <span class="btn btn--top1"></span><span class="btn btn--top2"></span><span class="btn btn--side"></span>
               <div class="body body--right"><div class="inner-win inner-win--right">{stack(-IN_HALF, "right")}</div></div>
             </div>
             <div class="half half--left" id="halfLeft">
+              {walls((RD, 16, 16, RD))}
               <div class="face body body--left"><div class="inner-win inner-win--left">{stack(0, "left")}</div></div>
               <div class="face face--back body">
                 <span class="spine"></span>
@@ -692,6 +777,11 @@ def write_html(cfg, root, fmt, comp):
 {sfx_html}
     </div>
     <script>
+      // Card rows never overflow: a long line (a repo name, a URL) shrinks until it fits 88% of the frame width
+      document.querySelectorAll(".card > div").forEach((el) => {{
+        let fs = parseFloat(getComputedStyle(el).fontSize);
+        while (el.offsetWidth > {W} * 0.88 && fs > 18) {{ fs -= 2; el.style.fontSize = fs + "px"; }}
+      }});
       const tl = gsap.timeline({{ paused: true }});
       function ft(h, a, b, t) {{ b.immediateRender = false; tl.fromTo(h, a, b, t); }}
       function rise(h, t, d, y) {{ ft(h, {{ autoAlpha: 0, y: y }}, {{ autoAlpha: 1, y: 0, duration: d, ease: "power3.out" }}, t); }}

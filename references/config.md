@@ -27,7 +27,7 @@
 
 `at` and `until` take seconds or a reference: give any event an `"id"` and refer to its start (`"fold"`) or end
 (`"fold.end"`), with an offset (`"fold.end+0.5"`, `"in-0.2"`). An event's end is `at + duration` for timed events
-(pose, enter, exit, camera, power), `until` when given, or the clip's own end for a video. References may point forward.
+(pose, enter, exit, camera, power, swipe), `until` when given, or the clip's own end for a video. References may point forward.
 `build` prints every id with its resolved time.
 
 ## 3. Event reference
@@ -40,6 +40,7 @@
 | `camera` | `camera`: `{zoom, x, y}` (zoom multiplier, pixel offsets) · `duration` · `ease` | 0.8 |
 | media (`file`) | `file` · `screen`: inner / outer · `layer`: base / overlay · `in` / `out`: cut / fade / pop · `until` · `box` · `status` | clip length |
 | `tap` | `tap`: `[x, y]` simulator points · `screen` | — |
+| `swipe` | `swipe`: `[[x1, y1], [x2, y2]]` simulator points · `screen` · `duration` · `ease` | 0.35 |
 | `title` | `title`: text · `until` | — |
 | `card` | `card`: `{logo, title, lines}` · `until` | — |
 | `power` | `power`: inner / outer · `state`: on / off · `duration` | 0.2 |
@@ -59,11 +60,15 @@ Geometry (device pixels, iPhone Duo proportions): one half of the body is 1012×
   .top-layer  the inner stack again, flat, shown only while fully open (translateZ 6px — no seam at the hinge)
 ```
 
-- **Pose → rotation.** Opening angle φ: φ ≥ 90 → halves at ±(180−φ)/2; φ < 90 → the right half turns back towards
-  the camera (−45·φ/90) and the left closes over it. Left `z: 3` (in front), right `z: -3`. Only the right body casts
+- **Pose → rotation.** Opening angle φ: φ ≥ 60 → halves at ±(180−φ)/2 (a symmetric V); φ < 60 → the right half
+  turns back to face the camera (−60·φ/60) and the left closes over it. Left `z: 3` (in front), right `z: -3`. Only the right body casts
   an outer shadow (the left one's shadow would fall on the hinge as a stripe).
-- **Framing follows the pose**: closed is centred on the visible half at the closed zoom; from the half pose up it's
-  centred on the whole body at the open zoom; in between it interpolates. Camera events multiply / offset on top.
+- **Framing follows the pose**: the zoom keeps the body's on-screen width equal to the open body's and its height
+  within the closed framing, both with perspective (a half turned towards the camera grows); closed it's centred on
+  the visible half, from 60° up on the hinge. Camera events multiply / offset on top.
+- **Thickness**: each half is a body `THICK` deep — the screen at the front, the rear face (outer screen on the left
+  half) at the back, and shaded side walls along the rounded outline. The halves fold around the front surface, so
+  closed they stack face to face.
 - **Inner stack**: all inner media, overlays, taps and the power dim, drawn three times (left window, right window,
   flat top layer). Tweens target classes, so all three move together. Each video copy has its own id and file (the
   renderer finds media by id and could collapse identical copies).

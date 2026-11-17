@@ -7,7 +7,7 @@ sequence. Times are seconds or references like `"fold.end+0.5"` (see `config.md`
 - Device: start pose · fold / unfold · any angle · hold · fold several times · enter / exit · camera
 - Screens: app on the outer screen · app on the inner screen · sync a clip with the hinge · switch screens ·
   overlay (pop in) · keep the screen while folding · screen power · real status bar on your own image
-- Story: taps · headlines · logo card (intro / outro) · sound · poster · length
+- Story: taps and swipes · headlines · logo card (intro / outro) · sound · poster · length
 
 ---
 
@@ -30,8 +30,9 @@ sequence. Times are seconds or references like `"fold.end+0.5"` (see `config.md`
 
 Optional `ease` (any GSAP ease, default `power2.inOut`).
 
-**Any angle** — `"pose": 90` gives a laptop/tent-like L, `"pose": "half"` (132°) a shallow V. Above 90° the halves open
-symmetrically; below 90° the right half turns back towards the camera, so a closed device faces you.
+**Any angle** — `"pose": "half"` (132°) is a shallow V, `"pose": 90` a deeper one, `"pose": 60` a narrow V. From 60° up
+the halves open symmetrically towards the camera; below 60° the right half turns back to face the camera and the left
+closes over it, so a closed device shows its outer screen. The framing zooms with the pose (a narrow V is shown larger).
 
 **Hold** — nothing to write: the device keeps its pose until the next `pose` event. For example, open half-way, hold
 0.5 s, then open fully:
@@ -59,7 +60,8 @@ If the first motion event is an `enter`, the device starts off-screen. Without a
 ```
 
 A `pose` event can carry a `camera` too, so the camera move rides on the fold. Return with `{"zoom": 1, "x": 0, "y": 0}`.
-The framing already follows the pose (a closed device is centred on its visible half, an open one on the whole body).
+The framing already follows the pose: the zoom keeps the body's on-screen width, a closed device is centred on its
+visible half, an open one on the hinge. Keep camera pushes modest at narrow angles — the body is already large there.
 
 ## Screens
 
@@ -113,13 +115,17 @@ to put the simulator's real clock + status icon on top (made by `duo.py status`)
 
 ## Story
 
-**Taps** — the simulator doesn't draw touches, so add them where you tapped in the recording (simulator points):
+**Taps and swipes** — the simulator doesn't draw touches, so add them where you touched in the recording
+(simulator points). A tap presses with a ripple; a swipe presses, slides along its path and lifts — start it a moment
+before the content moves in the recording:
 
 ```json
-{"at": "clip+3.4", "tap": [300, 640], "screen": "inner"}
+{"at": "clip+3.4", "tap": [300, 640], "screen": "inner"},
+{"at": "clip+5.1", "swipe": [[760, 330], [200, 330]], "duration": 0.3, "screen": "inner"}
 ```
 
-Taps less than 2.5 s apart become one finger gliding from one to the next.
+Gestures less than 2.5 s apart are one finger: it glides from the end of one to the start of the next, taking the
+time available, so it never jumps.
 
 **Headlines** — above the device; rise in over 0.7 s, fade over 0.45 s at `until`:
 

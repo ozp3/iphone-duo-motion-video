@@ -13,7 +13,8 @@ Every part is a building block you can place anywhere on the timeline and repeat
 - **Show your app on either screen**: the outer screen while closed, the inner screen open, or both at different
   times. Switch screens with a cut, a fade or a pop.
 - **Overlays** on top of the app (an image or a video, full screen or in a box), popping in like an app.
-- **Touch indicators** where you tapped in the recording (the simulator doesn't draw touches).
+- **Touch indicators** for taps and swipes where you touched in the recording (the simulator doesn't draw touches);
+  the finger slides along a swipe and glides smoothly between gestures.
 - **Headlines**, **logo cards** for intros and outros, a soft animated background in your colours.
 - **Screen power** that behaves like the real device, or under your control.
 - **Sound**: one consistent sound per action, plus your own files.
