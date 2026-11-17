@@ -1,7 +1,7 @@
-# katlanir-video
+# iphone-duo-motion-video
 
 iOS uygulamanız için **katlanır telefon tanıtım videosu** üreten bir [Claude Code](https://claude.com/claude-code)
-becerisi. Ekranlarda simülatörün **gerçek kaydı** oynar, gövde 3B olarak gerçekten katlanır. Çıktı dikey ve yatay
+becerisi (beceri adı `katlanir-video`). Ekranlarda simülatörün **gerçek kaydı** oynar, gövde 3B olarak gerçekten katlanır. Çıktı dikey ve yatay
 **4K**.
 
 Akış şöyle:
@@ -22,7 +22,7 @@ menteşe çevresinde döner, ekrandaki görüntü de onlarla birlikte kıvrılı
 ## Kurulum
 
 ```bash
-git clone https://github.com/ozp3/katlanir-video ~/.claude/skills/katlanir-video
+git clone https://github.com/ozp3/iphone-duo-motion-video ~/.claude/skills/katlanir-video
 pip3 install pillow
 ```
 
@@ -69,7 +69,7 @@ then closes straight from the open screen. You get 4K output in portrait and lan
 [Hyperframes](https://www.npmjs.com/package/hyperframes).
 
 Install with
-`git clone https://github.com/ozp3/katlanir-video ~/.claude/skills/katlanir-video`, then ask Claude Code for a
+`git clone https://github.com/ozp3/iphone-duo-motion-video ~/.claude/skills/katlanir-video`, then ask Claude Code for a
 foldable phone video of your app. The docs and the config keys are in Turkish.
 
 ## Lisans
