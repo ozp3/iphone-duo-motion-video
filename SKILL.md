@@ -1,98 +1,102 @@
 ---
-name: katlanir-video
+name: iphone-duo-motion-video
 description: >-
-  Katlanır telefon (iPhone Duo simülatörü) tanıtım videosu üretir: herhangi bir iOS uygulamasının simülatördeki GERÇEK
-  ekran kaydı, 3B menteşeyle katlanıp açılan gövdede oynar. Cihaz kapalı girer (dış ekran), yarı açılır, bekler, tam
-  açılır; sonda o anki ekranla doğrudan kapanır. Logo açılışı ve kapanışı, başlıklar, dokunuş izleri, tek ses paleti;
-  Hyperframes ile dikey + yatay 4K ve 1080p kopya. Kullanıcı "katlanır telefon videosu", "iPhone Duo videosu", "duo ile
-  tanıtım videosu", "fold/unfold animasyonlu uygulama videosu", "foldable phone promo / launch video", "uygulamamı
-  katlanır telefonda göster", "duo videosunu güncelle / yeniden render et / 4K al" dediğinde MUTLAKA kullan. Düz
-  (katlanmayan) telefon ya da web sitesi videosu için değil.
+  Makes motion videos of any iOS app on a foldable phone (iPhone Duo simulator): the app's REAL simulator screen
+  recordings play on a 3D body that genuinely folds, and you choreograph everything on a timeline — hinge poses at any
+  angle, how often it folds, enter/exit moves, camera, what each screen (inner/outer) shows, overlays, touch
+  indicators, headlines, logo cards, screen power and sound. Built with Hyperframes as portrait + landscape 4K plus
+  1080p copies. Use this skill whenever the user wants a "foldable phone video", "iPhone Duo video", "Duo promo /
+  launch / demo video", "fold / unfold animation of my app", "show my app on a foldable", or to change, re-render or
+  re-record such a video — even if they don't say "skill". Not for flat (non-folding) phone or website videos.
 ---
 
-# Katlanır telefon tanıtım videosu
+# iPhone Duo motion video
 
-Video iki kaynaktan kurulur: **ekranlar simülatörün gerçek kaydı**, **gövde CSS 3B** (simülatör kaydı yalnız ekran
-pikselini içerir, gövde hareketini değil). Her şey tek bir yapılandırma dosyasından (`video.json`) üretilir; elle
-kompozisyon yazmak gerekmez.
+Two sources make the video: **the screens are the simulator's real recordings**, **the body is CSS 3D** (a simulator
+recording holds only screen pixels, not the device's motion). The choreography is entirely the user's: a `video.json`
+timeline of events, each a building block you can place anywhere and repeat. `references/recipes.md` shows how to do
+each thing (fold, hold, any angle, switch screens, overlay, taps, cards, camera…).
 
-Hat betiği — her adım tek komut, ayrıntı `-h`:
-
-```
-python3 ~/.claude/skills/katlanir-video/scripts/katlanir.py ornek|kes|durum|uret|kare|render
-```
-
-Proje dizini (video.json'un olduğu yer):
+Pipeline script — one command per step, details with `-h`:
 
 ```
-<proje>/
-  video.json              yapılandırma (ornek yazar)
-  kayit/                  kes ve durum çıktıları: ic.mp4, ic-sol.mp4, ic-sag.mp4, dis-*.mp4, durum.png
-  katlanir-dikey/         üretilen Hyperframes kompozisyonu (index.html, assets/, anlar.json)
-  katlanir-yatay/
-  <ad>-dikey.mp4 …        4K çıktılar, -1080p kopyalar, .jpg posterler
-  NOTLAR.md               her turun kısa notu (ne değişti, neden)
+python3 ~/.claude/skills/iphone-duo-motion-video/scripts/duo.py init|cut|status|build|frames|render
 ```
 
-Gerekenler: Xcode + iPhone Duo simülatörü, ffmpeg/ffprobe, Node (`npx hyperframes@0.8.60`), Python 3 + Pillow.
+Project directory (where video.json lives):
 
-## Kurallar
+```
+<project>/
+  video.json              the timeline (init writes one example — replace it with the user's story)
+  rec/                    cut clips and the status image
+  foldable-portrait/      generated Hyperframes composition (index.html, assets/, marks.json)
+  foldable-landscape/
+  <name>-portrait.mp4 …   4K outputs, -1080p copies, .jpg posters
+  NOTES.md                a short note per round (what changed, why)
+```
 
-Her biri gerçek bir geri bildirimden çıktı; çiğnemek aynı itirazı geri getirir.
+Needs: Xcode with the iPhone Duo simulator, ffmpeg/ffprobe, Node (`npx hyperframes@0.8.60`), Python 3 + Pillow.
 
-1. **Ekranlar gerçek kayıt.** Uygulama ekranını CSS/HTML ile yeniden çizme: göz bildiği arayüzün taklidini küçük
-   farklardan hemen yakalar. Uygulamada olmayan bir şey gösterilecekse (ör. bir sohbet görünümü) ayrı bir görsel/video
-   olarak üst katmana koy (`ic.ust`).
-2. **Gövde gerçekten katlanır.** İki yarı menteşe çevresinde döner; sol yarı sağın üstüne kapanır. Yarıları yana
-   kaydırmak/genişletmek katlanma gibi görünmez ("raylı kayma"). Yarıların ekranında kaydın sol/sağ yarısı oynar,
-   böylece görüntü gövdeyle birlikte kıvrılır.
-3. **Gövde gerçek cihaza benzer.** Kapalıyken menteşe solda, gövdenin arkasında düz koyu şerit (parlak kapsül sahte
-   durur); tuşlar sağ yarıda; yarı açık her yarı ±24°. Kullanıcı referans görsel verirse ölç (en/boy, kıvrım oranı)
-   ve ona uydur — göz kararı değil.
-4. **Durum sütunu çizilmez, kesilir.** Saat ve kablosuz simgesi gerçek ekrandan alınır (`durum`); çizilen simge
-   "bozuk" diye geri döndü. Kendi görselin tam ekranı kaplıyorsa `"durum": true` ile gerçek bloğu üstüne koy.
-5. **Kalite.** Ölçek CSS `zoom` (transform ölçeği yazıyı tam boyda çizip küçültür, bulanıklaştırır); kesimler kaydın
-   kendi çözünürlüğünde; çıktı 4K. 1080p'ye doğrudan render "kalite çok düşük" diye geri döndü.
-6. **Akış.** Açılış: kapalı → yarı açık (iç ekran, kayıttaki gibi kararmış yanar ve ~1 sn'de netleşir) → 0.5 sn
-   bekler → tam açık. Bitiş: **o anki ekran kalır** (başka ekrana dönmek hata gibi görünür), tam açıktan **doğrudan**
-   kapanır (yarı açıkta durmaz), kapanınca dış ekranda aynı işin dar hâli (gerçek dış ekran görüntüsü).
-7. **Dil ve ses.** Reklam dili: fayda anlatan kısa başlıklar; iç kod adı, sürüm/karar numarası, dosya adı yok. Aynı
-   eylem her yerde aynı ses (paketteki tek palet: katlanma, dokunuş, geçiş, logo).
-8. **Cihaz ve hesap.** Kayıt simülatörde, test hesaplarıyla. Kullanıcının gerçek telefonuna kurma, gerçek parola yazma.
+## Rules
 
-## Akış
+These are about craft, not about any particular sequence. Each came from real feedback; breaking one brings the same
+objection back.
 
-İstek neyi değiştiriyor, oradan başla; birden çok şey isteniyorsa en erken adımdan sırayla ilerle:
+1. **Screens are real recordings.** Don't redraw the app's UI in CSS/HTML: viewers spot an imitation of an interface
+   they know from tiny differences. Something the app doesn't have (say, a chat view) goes on top as a separate image
+   or video overlay.
+2. **The body really folds.** The halves turn around the hinge and the screen content bends with them. Sliding or
+   stretching halves sideways doesn't read as folding ("it slides on rails").
+3. **The body looks like the real device.** Closed, the hinge is on the left: a flat dark strip behind the body (a
+   shiny capsule looks fake); buttons on the right half. If the user gives reference images, measure them (aspect
+   ratio, crease) and match — don't eyeball.
+4. **The status column is cut, never drawn.** The clock and Wi-Fi icon come from the real screen (`status`); a drawn
+   icon came back as "broken".
+5. **Quality.** Scale with CSS `zoom` (a transform scale blurs text); cut at the recording's own resolution; render 4K.
+   Rendering straight at 1080p came back as "quality is too low".
+6. **Behave like the device.** What's on screen when a fold starts stays and bends with the halves — switching to
+   another screen mid-fold looks like a bug. Screens power like the real thing (closed: outer on, inner off; the
+   folded half dims when half-open — that dimming is in the recording, keep it). Line pose events up with the
+   screen's reaction in the clip.
+7. **Copy and sound.** Ad language: short headlines about the benefit; no internal code names, ticket numbers or file
+   names. The same action always makes the same sound (the bundled palette does this).
+8. **Device and accounts.** Record in the simulator with test accounts. Never install on the user's real phone or type
+   a real password.
 
-| İstek | Başla |
+## Workflow
+
+Start from whatever the request changes; with several changes, start at the earliest step:
+
+| Request | Start at |
 |---|---|
-| Yeni video | 0 |
-| Uygulama ekranı değişti, yeni kayıt | 1 |
-| Saat / durum simgesi | 2 |
-| Metin, başlık, süre, sıra, üst katman, dokunuş, logo | 3 |
-| Yalnız yeniden render / farklı poster | 5 |
+| New video | 0 |
+| The app's screens changed, new recording | 1 |
+| Clock / status icon | 2 |
+| Story, timing, poses, copy, overlays, taps, cards | 3 |
+| Re-render only / different poster | 5 |
 
-0. **Proje** — boş bir dizinde `katlanir.py ornek` → `video.json`. Logo (SVG/PNG), marka adı, başlıklar ve kapanış
-   satırlarını kullanıcının ürününden al; bilinmiyorsa makul bir taslak yaz ve raporda söyle.
-1. **Kayıt** — `references/kayit.md` (simülatörü ve ekran kimliklerini bulma, menteşe pozları, kayıt sırası, kesim
-   aralığı seçme). Sonra `katlanir.py kes <kayit.mov> --ekran ic --parcalar "a-b,c-d"`; dış ekran için
-   `--ekran dis --ad dis-1`.
-2. **Durum** — iç ekranın yatay ekran görüntüsü → `katlanir.py durum <png>`; `kayit/durum-onizleme.png`'ye bak.
-3. **Yapılandırma** — `references/yapilandirma.md` (alanlar, anlar ve zaman tabanları, üst katman, dokunuş). Sonra
-   `katlanir.py uret`: iki biçimi yazar, `hyperframes check` koşar (temiz olmalı) ve anları basar.
-4. **Kare kare bak** — `katlanir.py kare` (varsayılan: kapalı, yarı açık, açık, klip sonu, katlanma ortası, kapalı son
-   hâl, kapanış; `--at "tam+1,katlanma+0.3"` ile özel anlar). Temas sayfasını OKU; şüpheli yeri yakınlaştır. Asıl
-   itirazlar küçük ayrıntılardan gelir (simgenin içi, menteşe kalınlığı, bir anlık yanlış ekran) — "check geçti" yetmez.
-5. **Render** — `katlanir.py render [--poster "tam+2"]` (biçim başına ~2 dk; arka planda koş). Poster ilk kareye de
-   işlenir (paylaşım küçük resmi). Çıktı ölçümlerini oku (çözünürlük, Mbps, MiB).
-6. **Gönder** — dosya gönderme aracı varsa: 4K dosyalar 30 MiB'ı aşar ve uzak görüntüleyicilere gitmez; `-1080p.mp4`
-   kopyalarını da gönder ve bunu tek satırla söyle.
-7. **Not** — `NOTLAR.md`'ye turun özeti: ne değişti, neden, hangi geri bildirimle. Sonraki tur oradan başlar.
+0. **Story** — agree on the choreography with the user (or propose one): what each screen shows, when and how far it
+   folds, headlines, logo cards. Then `duo.py init` for a starting file and rewrite its timeline. Take the logo, brand
+   name and copy from the user's product; if unknown, draft sensible ones and say so.
+1. **Record** — `references/recording.md`: finding the simulator and its screens, hinge poses and what the OS does on
+   each, recording, choosing cut ranges. Then `duo.py cut <rec.mov> --screen inner|outer --parts "a-b,c-d" --name …`.
+2. **Status** — only if an image of yours covers a whole screen: a landscape screenshot of the inner screen →
+   `duo.py status <png>`; look at `rec/status-preview.png`.
+3. **Timeline** — `references/recipes.md` (how to do each thing) and `references/config.md` (every field, times and
+   ids). Then `duo.py build`: writes both formats, runs `hyperframes check` (must be clean) and prints each id's time.
+4. **Look frame by frame** — `duo.py frames` (default: around every pose change; `--at "fold+0.3,flat.end+1"` for
+   your own moments). READ the contact sheets and zoom into anything doubtful. The real objections come from small
+   details (inside of an icon, hinge thickness, one wrong frame mid-fold) — "check passed" is not enough.
+5. **Render** — `duo.py render [--poster "id+2"]` (~2 min per format; run it in the background). The poster is also
+   burned into frame 0 (the share thumbnail). Read the output measurements (resolution, Mbps, MiB).
+6. **Send** — if you have a file-sending tool: 4K files go over 30 MiB and don't reach remote viewers; send the
+   `-1080p.mp4` copies too and say so in one line.
+7. **Note** — add a short summary of the round to `NOTES.md`: what changed, why, after which feedback.
 
-Projede önceki turlardan elle yazılmış özel bir kompozisyon/üretici varsa onu sürdür (yeniden yazma); yukarıdaki
-kurallar orada da geçerli.
+If the project already has a hand-written composition from earlier rounds, keep using it (don't rewrite it); the
+rules above still apply there.
 
-## Rapor
+## Report
 
-Kısa: ne üretildi (dosyalar, süre, çözünürlük), bu turda ne değişti, kullanıcıdan beklenen karar varsa numaralı.
-Kullanıcının kendi rapor biçimi varsa ona uy.
+Short: what was produced (files, length, resolution), what changed this round, and any decision needed from the user,
+numbered. If the user has their own report format, follow it.

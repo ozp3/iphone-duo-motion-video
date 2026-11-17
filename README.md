@@ -1,77 +1,85 @@
 # iphone-duo-motion-video
 
-iOS uygulamanız için **katlanır telefon tanıtım videosu** üreten bir [Claude Code](https://claude.com/claude-code)
-becerisi (beceri adı `katlanir-video`). Ekranlarda simülatörün **gerçek kaydı** oynar, gövde 3B olarak gerçekten katlanır. Çıktı dikey ve yatay
-**4K**.
+A [Claude Code](https://claude.com/claude-code) skill for **motion videos of your iOS app on a foldable phone**. The
+screens are the iPhone Duo simulator's **real recordings**; the 3D body really folds and the picture bends with it.
+You choreograph everything, and it renders portrait and landscape in **4K**.
 
-Akış şöyle:
+## What you can do
 
-1. Cihaz kapalı girer; dış ekranda uygulamanız çalışır.
-2. Menteşe yarı açılır, iç ekran yanar ve kısa bir an bekler.
-3. Cihaz tam açılır; uygulama geniş ekranda sürer.
-4. Sonda o anki ekranla doğrudan kapanır.
-5. Logonuz ve sloganınızla biter.
+Every part is a building block you can place anywhere on the timeline and repeat:
 
-## Neden gerçek kayıt?
+- **Fold and unfold** to any angle (closed, a shallow V, an L, flat), as often as you like, with any easing.
+- **Hold** a pose, **enter and exit** from any side or with a fade, **move the camera** (push in, pull back).
+- **Show your app on either screen**: the outer screen while closed, the inner screen open, or both at different
+  times. Switch screens with a cut, a fade or a pop.
+- **Overlays** on top of the app (an image or a video, full screen or in a box), popping in like an app.
+- **Touch indicators** where you tapped in the recording (the simulator doesn't draw touches).
+- **Headlines**, **logo cards** for intros and outros, a soft animated background in your colours.
+- **Screen power** that behaves like the real device, or under your control.
+- **Sound**: one consistent sound per action, plus your own files.
 
-Arayüzü yeniden çizmek her zaman küçük farklarla ele verir: bir simge, bir boşluk, bir yazı tipi. Bu beceride
-ekranlar iPhone Duo simülatörünün kendi kaydıdır; yarı açıkta katlı yarının kararması ve açılınca netleşmesi
-işletim sisteminin kendi animasyonudur. Yalnız gövde hareketi üretilir, çünkü ekran kaydı onu içermez. İki yarı
-menteşe çevresinde döner, ekrandaki görüntü de onlarla birlikte kıvrılır.
+## Why a real recording?
 
-## Kurulum
+Redrawing an interface always gives itself away through small differences: an icon, a gap, a font. Here the screens
+are the simulator's own recording, so the app looks exactly like the app. The operating system's own reactions are
+part of it too, like the folded half dimming when half-open. Only the body's motion is generated, because a screen
+recording doesn't contain it. The content is drawn on both halves, so it bends with every fold.
+
+## Install
 
 ```bash
-git clone https://github.com/ozp3/iphone-duo-motion-video ~/.claude/skills/katlanir-video
+git clone https://github.com/ozp3/iphone-duo-motion-video ~/.claude/skills/iphone-duo-motion-video
 pip3 install pillow
 ```
 
-Gerekenler:
+You need:
 
-- macOS ve iPhone Duo simülatörü olan Xcode
+- macOS and Xcode with the iPhone Duo simulator
 - `ffmpeg`
-- Node.js (`npx`; render için [Hyperframes](https://www.npmjs.com/package/hyperframes) kendiliğinden iner)
+- Node.js (`npx`; [Hyperframes](https://www.npmjs.com/package/hyperframes) downloads itself for rendering)
 - Python 3
 
-## Kullanım
+## Usage
 
-Claude Code'a söylemeniz yeterli:
+Tell Claude Code what you want to show:
 
-> uygulamamın katlanır telefon videosunu hazırla
+> make a foldable phone video of my app: start closed on the login screen, unfold to the dashboard, fold it twice
+> to show it standing up, end on our logo
 
-Beceri kaydı alır, keser, videoyu kurar, kare kare kontrol eder ve render eder. Adımları elle de koşabilirsiniz:
+The skill plans the timeline with you, records the simulator, cuts the clips, builds the video, checks it frame by
+frame and renders it.
 
-```bash
-K=~/.claude/skills/katlanir-video/scripts/katlanir.py
-python3 $K ornek                                            # video.json taslağı
-python3 $K kes kayit-ic.mov --ekran ic --parcalar "2.1-3.1,3.1-5.15,19.5-25.25"
-python3 $K durum ekran.png                                  # saat + durum simgesi, gerçek ekrandan
-python3 $K uret                                             # kompozisyonlar + denetim
-python3 $K kare                                             # anahtar anların kareleri
-python3 $K render                                           # 4K + poster + 1080p kopya
+The timeline is a list of events in `video.json`:
+
+```json
+"device": {"pose": "closed"},
+"timeline": [
+  {"id": "in", "at": 0.3, "enter": "bottom"},
+  {"at": "in", "screen": "outer", "file": "rec/outer.mp4"},
+  {"id": "open", "at": 5, "pose": "open", "duration": 0.7},
+  {"at": "open+0.2", "screen": "inner", "file": "rec/inner.mp4"},
+  {"at": "open.end+1", "until": "open.end+4", "title": "Everything, side by side."},
+  {"at": 12, "pose": 90, "camera": {"zoom": 1.15}},
+  {"at": 15, "pose": "closed"},
+  {"at": 16.5, "card": {"logo": "logo.svg", "lines": ["example.app"]}}
+]
 ```
 
-Her şey tek bir `video.json`'dan gelir:
+You can also run the steps by hand:
 
-- dış ekranda oynayacaklar,
-- iç ekran kaydı ve dokunuş noktaları,
-- üst katmanlar,
-- başlıklar,
-- açılış ve kapanış.
+```bash
+D=~/.claude/skills/iphone-duo-motion-video/scripts/duo.py
+python3 $D init                                     # a starting video.json
+python3 $D cut rec-inner.mov --screen inner --parts "2.1-3.1,19.5-25.25"
+python3 $D build                                    # compositions + check
+python3 $D frames                                   # snapshots around every fold
+python3 $D render                                   # 4K + poster + 1080p copy
+```
 
-Alanların açıklaması `references/yapilandirma.md`'de, kaydın nasıl alınacağı `references/kayit.md`'de.
+- [`references/recipes.md`](references/recipes.md) shows how to do each thing.
+- [`references/config.md`](references/config.md) lists every field.
+- [`references/recording.md`](references/recording.md) explains the simulator recording.
 
-## English
+## License
 
-A Claude Code skill that makes a **foldable-phone promo video** for your iOS app. The screens are the iPhone Duo
-simulator's **real recording**, and the 3D body actually folds: it starts closed, opens half-way, holds, opens flat,
-then closes straight from the open screen. You get 4K output in portrait and landscape, built with
-[Hyperframes](https://www.npmjs.com/package/hyperframes).
-
-Install with
-`git clone https://github.com/ozp3/iphone-duo-motion-video ~/.claude/skills/katlanir-video`, then ask Claude Code for a
-foldable phone video of your app. The docs and the config keys are in Turkish.
-
-## Lisans
-
-[MIT](LICENSE). Ses efektleri [Kenney](https://kenney.nl) paketlerinden; lisansları CC0.
+[MIT](LICENSE). Sound effects are from [Kenney](https://kenney.nl) packs, released under CC0.
